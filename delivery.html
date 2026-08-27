@@ -269,17 +269,6 @@ body::before{content:'';position:fixed;inset:0;background:
           </div>
         </div>
 
-        <!-- Contact -->
-        <div class="support-box">
-          <div class="support-top">
-            <div class="support-top-text">
-              <div class="support-top-title">💬 <span data-i18n="contactTitle">Need help? Contact Seller</span></div>
-              <div class="support-top-desc" data-i18n="contactDesc">Issues with your account? Our support team is available to help you.</div>
-            </div>
-            <a id="contact-link" href="https://t.me/Donk9125" target="_blank" class="contact-btn">✉️ <span data-i18n="contactBtn">Contact</span></a>
-          </div>
-        </div>
-
       </div>
     </div>
   </div>
@@ -437,10 +426,10 @@ async function load(){
     const trackUUID = data._ggselUUID || uniquecode || '';
     const oid = data.order.orderId || orderid || '';
     if(trackUUID){
-      document.getElementById('order-link').href = `https://payment.ggsel.com/order/${trackUUID}`;
+      document.getElementById('order-link').href = `https://payment.ggsel.com/en/order/${trackUUID}`;
       document.getElementById('order-link-box').style.display = 'block';
     } else if(oid){
-      document.getElementById('order-link').href = `https://payment.ggsel.com/order/${oid}`;
+      document.getElementById('order-link').href = `https://payment.ggsel.com/en/order/${oid}`;
       document.getElementById('order-link-box').style.display = 'block';
     }
     show('state-result');
