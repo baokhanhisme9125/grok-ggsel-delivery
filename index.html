@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Grok Delivery – GGSEL</title>
+<meta name="description" content="Receive your Grok account after payment on GGSEL.net"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0a0a1a;--card:rgba(18,18,45,.92);--border:rgba(255,255,255,.09);--text:#EEEEFF;--text2:#C5C5E8;--muted:rgba(197,197,232,.55);--orange:#FF6B35;--amber:#FFB74D;--green:#4CAF9F;--red:#FF5C8A;--grad:linear-gradient(135deg,#FF6B35,#FFB74D)}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:32px 16px;-webkit-font-smoothing:antialiased}
+body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 70% 55% at 15% -5%,rgba(255,107,53,.15) 0%,transparent 65%),radial-gradient(ellipse 55% 45% at 85% 105%,rgba(255,183,77,.1) 0%,transparent 65%);pointer-events:none;z-index:0}
+.page{width:100%;max-width:480px;position:relative;z-index:1}
+.logo{text-align:center;margin-bottom:32px}
+.logo-icon{width:64px;height:64px;background:var(--grad);border-radius:18px;display:inline-flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 6px 24px rgba(255,107,53,.4);margin-bottom:12px}
+.logo-name{font-size:22px;font-weight:800}.logo-name span{background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.logo-sub{font-size:13px;color:var(--muted);margin-top:4px}
+.lang-toggle{position:fixed;top:16px;right:16px;z-index:100;display:flex;gap:6px}
+.lang-btn{background:rgba(255,255,255,.06);border:1px solid var(--border);border-radius:9px;color:var(--muted);padding:6px 13px;font-size:12px;font-weight:700;cursor:pointer;transition:.2s;font-family:inherit}
+.lang-btn.active{background:rgba(255,107,53,.18);border-color:rgba(255,107,53,.45);color:var(--text)}
+.card{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:28px;position:relative;overflow:hidden}
+.card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,107,53,.5),rgba(255,183,77,.5),transparent)}
+.card-title{font-size:20px;font-weight:800;margin-bottom:6px}
+.card-desc{font-size:13.5px;color:var(--muted);line-height:1.6;margin-bottom:22px}
+.form-group{margin-bottom:16px}
+.form-label{font-size:12px;font-weight:700;color:var(--text2);margin-bottom:6px;display:block;text-transform:uppercase;letter-spacing:.05em}
+.form-input{width:100%;background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:12px;color:var(--text);padding:14px 16px;font-size:15px;font-family:inherit;transition:.2s;outline:none}
+.form-input:focus{border-color:rgba(255,107,53,.6);box-shadow:0 0 0 3px rgba(255,107,53,.15)}
+.btn-primary{width:100%;background:var(--grad);border:none;border-radius:14px;color:#fff;padding:15px;font-size:15px;font-weight:800;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 4px 20px rgba(255,107,53,.35);font-family:inherit;margin-top:8px}
+.btn-primary:hover{box-shadow:0 6px 28px rgba(255,107,53,.5);transform:translateY(-1px)}
+#state-loading{display:none;text-align:center;padding:48px 20px}
+.spinner{width:48px;height:48px;border:3px solid var(--border);border-top-color:var(--orange);border-right-color:var(--amber);border-radius:50%;animation:spin .9s linear infinite;margin:0 auto 20px}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="lang-toggle">
+    <button class="lang-btn active" id="btn-en" onclick="setLang('en')">🇬🇧 EN</button>
+    <button class="lang-btn" id="btn-ru" onclick="setLang('ru')">🇷🇺 RU</button>
+  </div>
+  <div class="logo">
+    <div class="logo-icon">🤖</div>
+    <div class="logo-name"><span>Grok</span> Delivery</div>
+    <div class="logo-sub">GGSEL.net • Automatic delivery 24/7</div>
+  </div>
+
+  <div id="state-form">
+    <div class="card">
+      <div class="card-title" data-i18n="formTitle">Get Your Account</div>
+      <div class="card-desc" data-i18n="formDesc">After payment on GGSEL.net, enter your <b>Order ID</b> and <b>purchase email</b> to receive your Grok account.</div>
+      <div class="form-group">
+        <label class="form-label" for="inp-orderid" data-i18n="labelOrderId">Order ID (from GGSEL)</label>
+        <input id="inp-orderid" class="form-input" type="text" autocomplete="off" placeholder="e.g. 43522210"
+               onkeydown="if(event.key==='Enter')document.getElementById('inp-email').focus()"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="inp-email" data-i18n="labelEmail">Email used for purchase</label>
+        <input id="inp-email" class="form-input" type="email" autocomplete="off"
+               onkeydown="if(event.key==='Enter')submitForm()"/>
+      </div>
+      <button class="btn-primary" onclick="submitForm()">✅ <span data-i18n="btnSubmit">Confirm & Get Account</span></button>
+    </div>
+  </div>
+
+  <div id="state-loading">
+    <div class="card">
+      <div class="spinner"></div>
+      <div style="font-weight:700;font-size:16px;margin-bottom:6px">Verifying…</div>
+      <div style="font-size:13px;color:var(--muted)">Please wait a few seconds.</div>
+    </div>
+  </div>
+
+  <div style="text-align:center;font-size:11px;color:var(--muted);margin-top:24px">© 2025 Grok Delivery · Powered by GGSEL.net</div>
+</div>
+
+<script>
+const S={en:{formTitle:'Get Your Account',formDesc:'After payment on GGSEL.net, enter your <b>Order ID</b> and <b>purchase email</b> to receive your Grok account.',labelOrderId:'Order ID (from GGSEL)',labelEmail:'Email used for purchase',btnSubmit:'Confirm & Get Account',errEmpty:'Please enter Order ID.'},ru:{formTitle:'Получите аккаунт',formDesc:'После оплаты на GGSEL.net введите <b>номер заказа</b> и <b>email покупки</b> для получения аккаунта Grok.',labelOrderId:'Номер заказа (из GGSEL)',labelEmail:'Email покупки',btnSubmit:'Подтвердить и получить',errEmpty:'Введите номер заказа.'}};
+let lang='en';
+function setLang(l){lang=l;document.querySelectorAll('[data-i18n]').forEach(el=>{const k=el.dataset.i18n;if(S[l]&&S[l][k]!==undefined)el.innerHTML=S[l][k];});document.getElementById('btn-en').classList.toggle('active',l==='en');document.getElementById('btn-ru').classList.toggle('active',l==='ru');}
+
+function submitForm(){
+  const orderId=document.getElementById('inp-orderid').value.trim();
+  const email=document.getElementById('inp-email').value.trim();
+  if(!orderId){alert(S[lang].errEmpty);return;}
+  let url=`/delivery.html?orderid=${encodeURIComponent(orderId)}`;
+  if(email) url+=`&email=${encodeURIComponent(email)}`;
+  window.location.href=url;
+}
+
+// Auto-redirect logic
+(function(){
+  const params=new URLSearchParams(window.location.search);
+  const orderid=(params.get('orderid')||'').trim();
+  const uniquecode=(params.get('uniquecode')||'').trim();
+
+  if(orderid && /^\d+$/.test(orderid)){
+    const email=params.get('email')||'';
+    let url=`/delivery.html?orderid=${encodeURIComponent(orderid)}`;
+    if(email) url+=`&email=${encodeURIComponent(email)}`;
+    window.location.replace(url);
+    return;
+  }
+
+  if(uniquecode){
+    document.getElementById('state-form').style.display='none';
+    document.getElementById('state-loading').style.display='block';
+    fetch(`/api/lookup-code?code=${encodeURIComponent(uniquecode)}`)
+      .then(r=>r.json())
+      .then(data=>{
+        if(data.success){
+          window.location.replace(`/delivery.html?orderid=${encodeURIComponent(data.order.orderId||'')}`);
+        } else {
+          document.getElementById('state-loading').style.display='none';
+          document.getElementById('state-form').style.display='block';
+          const emailGroup=document.getElementById('inp-email');
+          if(emailGroup&&emailGroup.parentElement) emailGroup.parentElement.style.display='none';
+          const desc=document.querySelector('.card-desc');
+          if(desc) desc.innerHTML=lang==='ru'?'🔗 Введите <b>номер заказа</b> из email GGSEL':'🔗 Enter your <b>Order Number</b> from GGSEL email';
+        }
+      })
+      .catch(()=>{document.getElementById('state-loading').style.display='none';document.getElementById('state-form').style.display='block';});
+  }
+})();
+</script>
+</body>
+</html>
