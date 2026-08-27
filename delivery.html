@@ -394,8 +394,8 @@ async function load(){
       const resolveRes=await fetch(`/api/resolve-uuid?uuid=${encodeURIComponent(uniquecode)}`);
       const resolved=await resolveRes.json();
       if(resolved.success && resolved.orderId){
-        // Got numeric ID, now verify normally
-        const verifyRes=await fetch(`/api/verify?orderid=${encodeURIComponent(resolved.orderId)}${email?'&email='+encodeURIComponent(email):''}`);
+        // Got numeric ID, now verify normally — pass UUID for col H delivery link
+        const verifyRes=await fetch(`/api/verify?orderid=${encodeURIComponent(resolved.orderId)}${email?'&email='+encodeURIComponent(email):''}&ggsel_uuid=${encodeURIComponent(uniquecode)}`);
         data=await verifyRes.json();
         // Store UUID for tracking link
         if(data.success) data._ggselUUID = uniquecode;

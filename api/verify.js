@@ -28,6 +28,7 @@ module.exports = async (req, res) => {
 
   const orderId    = (req.query.orderid || '').trim();
   const emailParam = (req.query.email   || '').trim().toLowerCase();
+  const ggselUUID  = (req.query.ggsel_uuid || '').trim();
 
   if (!orderId) return res.status(400).json({ success: false, error: 'Missing Order ID.' });
 
@@ -79,7 +80,7 @@ module.exports = async (req, res) => {
     await saveOrder({
       uniqueCode: orderKey, buyerEmail: orderInfo.buyerEmail,
       accountEmail: account.email, accountPassword: account.password,
-      orderId, productType: 'grok', productName: 'Grok Account (GGSEL)',
+      orderId, productType: 'grok', productName: 'Grok Account (GGSEL)', ggselUUID,
     });
 
     console.log(`[grok-ggsel] Delivered for order ${orderId}`);
