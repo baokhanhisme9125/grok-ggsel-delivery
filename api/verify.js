@@ -76,11 +76,12 @@ module.exports = async (req, res) => {
     if (raceCheck) return alreadyDeliveredResponse(res, raceCheck);
 
     // Deliver
+    const resolvedUUID = ggselUUID || orderInfo.uniqueCode || '';
     await deleteAccountRow(SHEET_NAME, account.rowIndex);
     await saveOrder({
       uniqueCode: orderKey, buyerEmail: orderInfo.buyerEmail,
       accountEmail: account.email, accountPassword: account.password,
-      orderId, productType: 'grok', productName: 'Grok Account (GGSEL)', ggselUUID,
+      orderId, productType: 'grok', productName: 'Grok Account (GGSEL)', ggselUUID: resolvedUUID,
     });
 
     console.log(`[grok-ggsel] Delivered for order ${orderId}`);
@@ -88,7 +89,7 @@ module.exports = async (req, res) => {
     return res.status(200).json({
       success: true, alreadyDelivered: false,
       account: { email: account.email, password: account.password },
-      order: { orderId, buyerEmail: orderInfo.buyerEmail, soldAt: new Date().toISOString(), productType: 'grok', productName: 'Grok Account (GGSEL)' },
+      order: { orderId, buyerEmail: orderInfo.buyerEmail, soldAt: new Date().toISOString(), productType: 'grok', productName: 'Grok Account (GGSEL)', ggselUUID: resolvedUUID },
     });
   } catch (err) {
     console.error('[grok-ggsel-verify] Error:', err.message);

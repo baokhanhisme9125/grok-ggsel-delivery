@@ -423,13 +423,9 @@ async function load(){
     document.getElementById('acc-pass').textContent=data.account.password;
     document.getElementById('verified-label').textContent=S[lang][data.alreadyDelivered?'alreadyDelivered':'verified'];
     // Set order tracking link (GGSEL format with UUID)
-    const trackUUID = data._ggselUUID || uniquecode || '';
-    const oid = data.order.orderId || orderid || '';
+    const trackUUID = data.order.ggselUUID || data._ggselUUID || uniquecode || '';
     if(trackUUID){
       document.getElementById('order-link').href = `https://payment.ggsel.com/en/order/${trackUUID}`;
-      document.getElementById('order-link-box').style.display = 'block';
-    } else if(oid){
-      document.getElementById('order-link').href = `https://payment.ggsel.com/en/order/${oid}`;
       document.getElementById('order-link-box').style.display = 'block';
     }
     show('state-result');
