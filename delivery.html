@@ -408,10 +408,10 @@ async function load(){
     document.getElementById('acc-email').textContent=data.account.email;
     document.getElementById('acc-pass').textContent=data.account.password;
     document.getElementById('verified-label').textContent=S[lang][data.alreadyDelivered?'alreadyDelivered':'verified'];
-    // Set order tracking link (Digiseller format)
+    // Set order tracking link (GGSEL format)
     const orderId = data.order.orderId || '';
     if(orderId){
-      document.getElementById('order-link').href = `https://digiseller.me/info/buy.asp?id_i=${orderId}&lang=en-US`;
+      document.getElementById('order-link').href = `https://payment.ggsel.com/order/${orderId}`;
       document.getElementById('order-link-box').style.display = 'block';
     }
     show('state-result');
