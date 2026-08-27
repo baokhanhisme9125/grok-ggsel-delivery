@@ -401,11 +401,17 @@ async function load(){
     let data;
 
     if(uniquecode && !orderid){
-      // GGSEL "By link" flow: uniquecode → lookup-code API → auto-deliver
-      const lookupRes=await fetch(`/api/lookup-code?code=${encodeURIComponent(uniquecode)}`);
-      data=await lookupRes.json();
-      if(!data.success && data.needOrderId){
-        // Code not mapped, try direct verify with uniquecode as orderid
+      // GGSEL "By link" sends UUID → resolve to numeric order ID first
+      const resolveRes=await fetch(`/api/resolve-uuid?uuid=${encodeURIComponent(uniquecode)}`);
+      const resolved=await resolveRes.json();
+      if(resolved.success && resolved.orderId){
+        // Got numeric ID, now verify normally
+        const verifyRes=await fetch(`/api/verify?orderid=${encodeURIComponent(resolved.orderId)}${email?'&email='+encodeURIComponent(email):''}`);
+        data=await verifyRes.json();
+        // Store UUID for tracking link
+        if(data.success) data._ggselUUID = uniquecode;
+      } else {
+        // Fallback: try directly as orderid
         const verifyRes=await fetch(`/api/verify?orderid=${encodeURIComponent(uniquecode)}${email?'&email='+encodeURIComponent(email):''}`);
         data=await verifyRes.json();
       }
@@ -427,9 +433,13 @@ async function load(){
     document.getElementById('acc-email').textContent=data.account.email;
     document.getElementById('acc-pass').textContent=data.account.password;
     document.getElementById('verified-label').textContent=S[lang][data.alreadyDelivered?'alreadyDelivered':'verified'];
-    // Set order tracking link (GGSEL format)
+    // Set order tracking link (GGSEL format with UUID)
+    const trackUUID = data._ggselUUID || uniquecode || '';
     const oid = data.order.orderId || orderid || '';
-    if(oid){
+    if(trackUUID){
+      document.getElementById('order-link').href = `https://payment.ggsel.com/order/${trackUUID}`;
+      document.getElementById('order-link-box').style.display = 'block';
+    } else if(oid){
       document.getElementById('order-link').href = `https://payment.ggsel.com/order/${oid}`;
       document.getElementById('order-link-box').style.display = 'block';
     }
