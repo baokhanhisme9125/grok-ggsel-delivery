@@ -389,29 +389,48 @@ async function load(){
   if(_loadCalled) return;
   _loadCalled = true;
   const params=new URLSearchParams(window.location.search);
-  const orderid=params.get('orderid');
-  const email=params.get('email');
-  if(!orderid){window.location='/';return;}
+  let orderid=params.get('orderid')||'';
+  const uniquecode=params.get('uniquecode')||params.get('unique_code')||'';
+  const email=params.get('email')||'';
+
+  // If no orderid and no uniquecode, go home
+  if(!orderid && !uniquecode){window.location='/';return;}
+
   show('state-loading');
   try{
-    let url=`/api/verify?orderid=${encodeURIComponent(orderid)}`;
-    if(email)url+=`&email=${encodeURIComponent(email)}`;
-    const res=await fetch(url);
-    const data=await res.json();
+    let data;
+
+    if(uniquecode && !orderid){
+      // GGSEL "By link" flow: uniquecode → lookup-code API → auto-deliver
+      const lookupRes=await fetch(`/api/lookup-code?code=${encodeURIComponent(uniquecode)}`);
+      data=await lookupRes.json();
+      if(!data.success && data.needOrderId){
+        // Code not mapped, try direct verify with uniquecode as orderid
+        const verifyRes=await fetch(`/api/verify?orderid=${encodeURIComponent(uniquecode)}${email?'&email='+encodeURIComponent(email):''}`);
+        data=await verifyRes.json();
+      }
+    } else {
+      // Direct orderid flow (manual entry or orderid param)
+      let url=`/api/verify?orderid=${encodeURIComponent(orderid)}`;
+      if(email)url+=`&email=${encodeURIComponent(email)}`;
+      const res=await fetch(url);
+      data=await res.json();
+    }
+
     if(!data.success){
       document.getElementById('err-msg').textContent=data.error||'Unknown error';
       show('state-error');return;
     }
-    document.getElementById('i-code').textContent=data.order.orderId||orderid;
+    document.getElementById('i-code').textContent=data.order.orderId||orderid||uniquecode;
     document.getElementById('i-email').textContent=data.order.buyerEmail||email||'—';
     document.getElementById('i-date').textContent=formatDate(data.order.soldAt);
     document.getElementById('acc-email').textContent=data.account.email;
     document.getElementById('acc-pass').textContent=data.account.password;
     document.getElementById('verified-label').textContent=S[lang][data.alreadyDelivered?'alreadyDelivered':'verified'];
     // Set order tracking link (GGSEL format)
-    const orderId = data.order.orderId || '';
-    if(orderId){
-      document.getElementById('order-link').href = `https://payment.ggsel.com/order/${orderId}`;
+    const oid = data.order.orderId || orderid || '';
+    if(oid){
+      document.getElementById('order-link').href = `https://payment.ggsel.com/order/${oid}`;
       document.getElementById('order-link-box').style.display = 'block';
     }
     show('state-result');
