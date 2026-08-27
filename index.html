@@ -73,7 +73,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
     </div>
   </div>
 
-  <div style="text-align:center;font-size:11px;color:var(--muted);margin-top:24px">© 2025 Grok Delivery · Powered by GGSEL.net</div>
+  <div style="text-align:center;font-size:11px;color:var(--muted);margin-top:24px">© 2026 Grok Delivery · Powered by GGSEL.net</div>
 </div>
 
 <script>
@@ -96,7 +96,7 @@ function submitForm(){
   const orderid=(params.get('orderid')||'').trim();
   const uniquecode=(params.get('uniquecode')||'').trim();
 
-  if(orderid && /^\d+$/.test(orderid)){
+  if(orderid && /^[\da-f\-]{4,}$/i.test(orderid)){
     const email=params.get('email')||'';
     let url=`/delivery.html?orderid=${encodeURIComponent(orderid)}`;
     if(email) url+=`&email=${encodeURIComponent(email)}`;
