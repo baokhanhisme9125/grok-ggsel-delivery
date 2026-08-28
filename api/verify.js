@@ -8,6 +8,15 @@ const { getNextAvailableAccount, deleteAccountRow, saveOrder, findOrderByCode, S
 const _pending = new Map();
 const PENDING_TTL = 30_000;
 
+/* ── Global delivery mutex ── */
+let _deliveryLock = Promise.resolve();
+function acquireDeliveryLock() {
+  let release;
+  const prev = _deliveryLock;
+  _deliveryLock = new Promise(r => { release = r; });
+  return prev.then(() => release);
+}
+
 function cleanPending() {
   const now = Date.now();
   for (const [k, t] of _pending) { if (now - t > PENDING_TTL) _pending.delete(k); }
@@ -73,32 +82,37 @@ module.exports = async (req, res) => {
       return res.status(403).json({ success: false, error: 'Email does not match.' });
     }
 
-    // Get account from Grok Account sheet
-    const account = await getNextAvailableAccount(SHEET_NAME);
-    if (!account) {
-      return res.status(503).json({ success: false, outOfStock: true, productName: 'Grok Account', error: 'Out of stock. Contact support.' });
-    }
+    /* ── ATOMIC: lock → get account → delete → save → release ── */
+    const releaseLock = await acquireDeliveryLock();
+    let account;
+    try {
+      // Re-check idempotency inside lock
+      const raceCheck = await findOrderByCode(orderKey);
+      if (raceCheck) { releaseLock(); return alreadyDeliveredResponse(res, raceCheck); }
 
-    // Race-condition guard
-    const raceCheck = await findOrderByCode(orderKey);
-    if (raceCheck) return alreadyDeliveredResponse(res, raceCheck);
+      account = await getNextAvailableAccount(SHEET_NAME);
+      if (!account) {
+        releaseLock();
+        return res.status(503).json({ success: false, outOfStock: true, productName: 'Grok Account', error: 'Out of stock. Contact support.' });
+      }
 
-    // Deliver
-    const resolvedUUID = ggselUUID || orderInfo.uniqueCode || '';
-    await deleteAccountRow(SHEET_NAME, account.rowIndex);
-    await saveOrder({
-      uniqueCode: orderKey, buyerEmail: orderInfo.buyerEmail,
-      accountEmail: account.email, accountPassword: account.password,
-      orderId, productType: 'grok', productName: 'Grok Account (GGSEL)', ggselUUID: resolvedUUID,
-    });
+      const resolvedUUID = ggselUUID || orderInfo.uniqueCode || '';
+      await deleteAccountRow(SHEET_NAME, account.rowIndex);
+      await saveOrder({
+        uniqueCode: orderKey, buyerEmail: orderInfo.buyerEmail,
+        accountEmail: account.email, accountPassword: account.password,
+        orderId, productType: 'grok', productName: 'Grok Account (GGSEL)', ggselUUID: resolvedUUID,
+      });
+      releaseLock();
 
-    console.log(`[grok-ggsel] Delivered for order ${orderId}`);
+      console.log(`[grok-ggsel] Delivered for order ${orderId}`);
 
-    return res.status(200).json({
-      success: true, alreadyDelivered: false,
-      account: { email: account.email, password: account.password },
-      order: { orderId, buyerEmail: orderInfo.buyerEmail, soldAt: new Date().toISOString(), productType: 'grok', productName: 'Grok Account (GGSEL)', ggselUUID: resolvedUUID },
-    });
+      return res.status(200).json({
+        success: true, alreadyDelivered: false,
+        account: { email: account.email, password: account.password },
+        order: { orderId, buyerEmail: orderInfo.buyerEmail, soldAt: new Date().toISOString(), productType: 'grok', productName: 'Grok Account (GGSEL)', ggselUUID: resolvedUUID },
+      });
+    } catch (lockErr) { releaseLock(); throw lockErr; }
   } catch (err) {
     console.error('[grok-ggsel-verify] Error:', err.message);
     return res.status(500).json({ success: false, error: 'Server error.' });
