@@ -13,11 +13,11 @@ function cleanPending() {
   for (const [k, t] of _pending) { if (now - t > PENDING_TTL) _pending.delete(k); }
 }
 
-function alreadyDeliveredResponse(res, order) {
+function alreadyDeliveredResponse(res, order, ggselUUID) {
   return res.status(200).json({
     success: true, alreadyDelivered: true,
     account: { email: order.accountEmail, password: order.accountPassword },
-    order: { orderId: order.orderId, buyerEmail: order.buyerEmail, soldAt: order.soldAt, productType: order.productType, productName: order.productName },
+    order: { orderId: order.orderId, buyerEmail: order.buyerEmail, soldAt: order.soldAt, productType: order.productType, productName: order.productName, ggselUUID: ggselUUID || '' },
   });
 }
 
@@ -50,7 +50,15 @@ module.exports = async (req, res) => {
       if (emailParam && emailParam !== (existing.buyerEmail || '').toLowerCase()) {
         return res.status(403).json({ success: false, error: 'Email does not match.' });
       }
-      return alreadyDeliveredResponse(res, existing);
+      // Resolve UUID from GGSEL API for tracking link
+      let resolvedUUID = ggselUUID;
+      try {
+        if (!resolvedUUID) {
+          const liveInfo = await verifyOrder(orderId);
+          resolvedUUID = liveInfo.uniqueCode || '';
+        }
+      } catch (_) {}
+      return alreadyDeliveredResponse(res, existing, resolvedUUID);
     }
 
     // Verify via GGSEL API
