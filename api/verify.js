@@ -3,7 +3,7 @@
  * GGSEL Grok delivery — single product (Grok Account)
  */
 const { verifyOrder } = require('../lib/ggsel');
-const { getNextAvailableAccount, deleteAccountRow, saveOrder, findOrderByCode, SHEET_NAME } = require('../lib/sheets');
+const { getNextAvailableAccount, deleteAccountRow, saveOrder, savePendingOrder, findOrderByCode, SHEET_NAME } = require('../lib/sheets');
 
 const _pending = new Map();
 const PENDING_TTL = 30_000;
@@ -59,6 +59,15 @@ module.exports = async (req, res) => {
       if (emailParam && emailParam !== (existing.buyerEmail || '').toLowerCase()) {
         return res.status(403).json({ success: false, error: 'Email does not match.' });
       }
+      // If pending (C blank) — seller hasn't filled account yet
+      if (existing.isPending) {
+        return res.status(503).json({
+          success: false, outOfStock: true, isPending: true,
+          productName: existing.productName,
+          ggselUUID: ggselUUID || '',
+          error: 'Out of stock — your order is saved. Please refresh (F5) periodically to receive your account.',
+        });
+      }
       // Resolve UUID from GGSEL API for tracking link
       let resolvedUUID = ggselUUID;
       try {
@@ -88,12 +97,30 @@ module.exports = async (req, res) => {
     try {
       // Re-check idempotency inside lock
       const raceCheck = await findOrderByCode(orderKey);
-      if (raceCheck) { releaseLock(); return alreadyDeliveredResponse(res, raceCheck); }
+      if (raceCheck && !raceCheck.isPending) { releaseLock(); return alreadyDeliveredResponse(res, raceCheck); }
+      if (raceCheck && raceCheck.isPending) {
+        releaseLock();
+        return res.status(503).json({
+          success: false, outOfStock: true, isPending: true,
+          productName: 'Grok Account', ggselUUID: ggselUUID || '',
+          error: 'Out of stock — your order is saved. Please refresh (F5) periodically.',
+        });
+      }
 
       account = await getNextAvailableAccount(SHEET_NAME);
       if (!account) {
+        const resolvedUUID = ggselUUID || orderInfo.uniqueCode || '';
+        await savePendingOrder({
+          uniqueCode: orderKey, buyerEmail: orderInfo.buyerEmail,
+          orderId, productType: 'grok', productName: 'Grok Account (GGSEL)', ggselUUID: resolvedUUID,
+        });
         releaseLock();
-        return res.status(503).json({ success: false, outOfStock: true, productName: 'Grok Account', ggselUUID: ggselUUID || orderInfo.uniqueCode || '', error: 'Out of stock. Contact support.' });
+        console.log(`[grok-ggsel] OOS — saved pending for ${orderId}`);
+        return res.status(503).json({
+          success: false, outOfStock: true, isPending: true,
+          productName: 'Grok Account', ggselUUID: resolvedUUID,
+          error: 'Out of stock — your order is saved. Please refresh (F5) periodically to receive your account.',
+        });
       }
 
       const resolvedUUID = ggselUUID || orderInfo.uniqueCode || '';
