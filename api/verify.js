@@ -3,7 +3,7 @@
  * GGSEL Grok delivery — single product (Grok Account)
  */
 const { verifyOrder } = require('../lib/ggsel');
-const { getNextAvailableAccount, deleteAccountRow, saveOrder, savePendingOrder, findOrderByCode, SHEET_NAME } = require('../lib/sheets');
+const { getNextAvailableAccount, deleteAccountRow, saveOrder, savePendingOrder, findOrderByCode, findRecentOrderByEmail, SHEET_NAME } = require('../lib/sheets');
 
 const _pending = new Map();
 const PENDING_TTL = 30_000;
@@ -89,6 +89,23 @@ module.exports = async (req, res) => {
     // Email match
     if (emailParam && orderInfo.buyerEmail && orderInfo.buyerEmail !== emailParam) {
       return res.status(403).json({ success: false, error: 'Email does not match.' });
+    }
+
+    // Cross-platform dedup: same buyer email within 10 min?
+    const dedupEmail = emailParam || (orderInfo.buyerEmail || '').toLowerCase();
+    if (dedupEmail && dedupEmail !== 'unknown') {
+      const recentByEmail = await findRecentOrderByEmail(dedupEmail);
+      if (recentByEmail && !recentByEmail.isPending) {
+        console.log(`[grok-ggsel] Cross-platform dedup: email=${dedupEmail} already delivered via ${recentByEmail.uniqueCode}`);
+        return alreadyDeliveredResponse(res, recentByEmail, ggselUUID);
+      }
+      if (recentByEmail && recentByEmail.isPending) {
+        return res.status(503).json({
+          success: false, outOfStock: true, isPending: true,
+          productName: recentByEmail.productName || 'Grok Account', ggselUUID: ggselUUID || '',
+          error: 'Out of stock — your order is saved. Please refresh (F5) periodically.',
+        });
+      }
     }
 
     /* ── ATOMIC: lock → get account → delete → save → release ── */
