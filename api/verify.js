@@ -3,7 +3,7 @@
  * GGSEL Grok delivery — single product (Grok Account)
  */
 const { verifyOrder } = require('../lib/ggsel');
-const { getNextAvailableAccount, deleteAccountRow, saveOrder, savePendingOrder, findOrderByCode, findRecentOrderByEmail, SHEET_NAME } = require('../lib/sheets');
+const { getNextAvailableAccount, deleteAccountRow, saveOrder, savePendingOrder, findOrderByCode, SHEET_NAME } = require('../lib/sheets');
 
 const _pending = new Map();
 const PENDING_TTL = 30_000;
@@ -41,14 +41,22 @@ module.exports = async (req, res) => {
 
   if (!orderId) return res.status(400).json({ success: false, error: 'Missing Order ID.' });
 
-  const orderKey = `ggsel-grok-${orderId}`;
-
   try {
+    // Verify via GGSEL API first to get uniqueCode
+    let orderInfo;
+    try { orderInfo = await verifyOrder(orderId); }
+    catch (err) { return res.status(404).json({ success: false, error: err.message }); }
+
+    if (!orderInfo.isPaid) return res.status(400).json({ success: false, error: 'Order not paid.' });
+
+    const uniqueCode = ggselUUID || orderInfo.uniqueCode || '';
+    const orderKey = uniqueCode || `ggsel-grok-${orderId}`;
+
     cleanPending();
     if (_pending.has(orderKey)) {
       await new Promise(r => setTimeout(r, 3000));
       const existing = await findOrderByCode(orderKey);
-      if (existing) return alreadyDeliveredResponse(res, existing);
+      if (existing) return alreadyDeliveredResponse(res, existing, uniqueCode);
       return res.status(429).json({ success: false, error: 'Order being processed. Wait and refresh.' });
     }
     _pending.set(orderKey, Date.now());
@@ -64,48 +72,16 @@ module.exports = async (req, res) => {
         return res.status(503).json({
           success: false, outOfStock: true, isPending: true,
           productName: existing.productName,
-          ggselUUID: ggselUUID || '',
+          ggselUUID: uniqueCode,
           error: 'Out of stock — your order is saved. Please refresh (F5) periodically to receive your account.',
         });
       }
-      // Resolve UUID from GGSEL API for tracking link
-      let resolvedUUID = ggselUUID;
-      try {
-        if (!resolvedUUID) {
-          const liveInfo = await verifyOrder(orderId);
-          resolvedUUID = liveInfo.uniqueCode || '';
-        }
-      } catch (_) {}
-      return alreadyDeliveredResponse(res, existing, resolvedUUID);
+      return alreadyDeliveredResponse(res, existing, uniqueCode);
     }
-
-    // Verify via GGSEL API
-    let orderInfo;
-    try { orderInfo = await verifyOrder(orderId); }
-    catch (err) { return res.status(404).json({ success: false, error: err.message }); }
-
-    if (!orderInfo.isPaid) return res.status(400).json({ success: false, error: 'Order not paid.' });
 
     // Email match
     if (emailParam && orderInfo.buyerEmail && orderInfo.buyerEmail !== emailParam) {
       return res.status(403).json({ success: false, error: 'Email does not match.' });
-    }
-
-    // Cross-platform dedup: same buyer email within 10 min?
-    const dedupEmail = emailParam || (orderInfo.buyerEmail || '').toLowerCase();
-    if (dedupEmail && dedupEmail !== 'unknown') {
-      const recentByEmail = await findRecentOrderByEmail(dedupEmail);
-      if (recentByEmail && !recentByEmail.isPending) {
-        console.log(`[grok-ggsel] Cross-platform dedup: email=${dedupEmail} already delivered via ${recentByEmail.uniqueCode}`);
-        return alreadyDeliveredResponse(res, recentByEmail, ggselUUID);
-      }
-      if (recentByEmail && recentByEmail.isPending) {
-        return res.status(503).json({
-          success: false, outOfStock: true, isPending: true,
-          productName: recentByEmail.productName || 'Grok Account', ggselUUID: ggselUUID || '',
-          error: 'Out of stock — your order is saved. Please refresh (F5) periodically.',
-        });
-      }
     }
 
     /* ── ATOMIC: lock → get account → delete → save → release ── */
@@ -114,38 +90,36 @@ module.exports = async (req, res) => {
     try {
       // Re-check idempotency inside lock
       const raceCheck = await findOrderByCode(orderKey);
-      if (raceCheck && !raceCheck.isPending) { releaseLock(); return alreadyDeliveredResponse(res, raceCheck); }
+      if (raceCheck && !raceCheck.isPending) { releaseLock(); return alreadyDeliveredResponse(res, raceCheck, uniqueCode); }
       if (raceCheck && raceCheck.isPending) {
         releaseLock();
         return res.status(503).json({
           success: false, outOfStock: true, isPending: true,
-          productName: 'Grok Account', ggselUUID: ggselUUID || '',
+          productName: 'Grok Account', ggselUUID: uniqueCode,
           error: 'Out of stock — your order is saved. Please refresh (F5) periodically.',
         });
       }
 
       account = await getNextAvailableAccount(SHEET_NAME);
       if (!account) {
-        const resolvedUUID = ggselUUID || orderInfo.uniqueCode || '';
         await savePendingOrder({
           uniqueCode: orderKey, buyerEmail: orderInfo.buyerEmail,
-          orderId, productType: 'grok', productName: 'Grok Account (GGSEL)', ggselUUID: resolvedUUID,
+          orderId, productType: 'grok', productName: 'Grok Account (GGSEL)', ggselUUID: uniqueCode,
         });
         releaseLock();
         console.log(`[grok-ggsel] OOS — saved pending for ${orderId}`);
         return res.status(503).json({
           success: false, outOfStock: true, isPending: true,
-          productName: 'Grok Account', ggselUUID: resolvedUUID,
+          productName: 'Grok Account', ggselUUID: uniqueCode,
           error: 'Out of stock — your order is saved. Please refresh (F5) periodically to receive your account.',
         });
       }
 
-      const resolvedUUID = ggselUUID || orderInfo.uniqueCode || '';
       await deleteAccountRow(SHEET_NAME, account.rowIndex);
       await saveOrder({
         uniqueCode: orderKey, buyerEmail: orderInfo.buyerEmail,
         accountEmail: account.email, accountPassword: account.password,
-        orderId, productType: 'grok', productName: 'Grok Account (GGSEL)', ggselUUID: resolvedUUID,
+        orderId, productType: 'grok', productName: 'Grok Account (GGSEL)', ggselUUID: uniqueCode,
       });
       releaseLock();
 
@@ -154,7 +128,7 @@ module.exports = async (req, res) => {
       return res.status(200).json({
         success: true, alreadyDelivered: false,
         account: { email: account.email, password: account.password },
-        order: { orderId, buyerEmail: orderInfo.buyerEmail, soldAt: new Date().toISOString(), productType: 'grok', productName: 'Grok Account (GGSEL)', ggselUUID: resolvedUUID },
+        order: { orderId, buyerEmail: orderInfo.buyerEmail, soldAt: new Date().toISOString(), productType: 'grok', productName: 'Grok Account (GGSEL)', ggselUUID: uniqueCode },
       });
     } catch (lockErr) { releaseLock(); throw lockErr; }
   } catch (err) {
