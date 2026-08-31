@@ -56,7 +56,17 @@ module.exports = async (req, res) => {
     if (_pending.has(orderKey)) {
       await new Promise(r => setTimeout(r, 3000));
       const existing = await findOrderByCode(orderKey);
-      if (existing) return alreadyDeliveredResponse(res, existing, uniqueCode);
+      if (existing) {
+        if (existing.isPending) {
+          return res.status(503).json({
+            success: false, outOfStock: true, isPending: true,
+            productName: existing.productName,
+            ggselUUID: uniqueCode,
+            error: 'Out of stock — your order is saved. Please refresh (F5) periodically to receive your account.',
+          });
+        }
+        return alreadyDeliveredResponse(res, existing, uniqueCode);
+      }
       return res.status(429).json({ success: false, error: 'Order being processed. Wait and refresh.' });
     }
     _pending.set(orderKey, Date.now());
