@@ -36,6 +36,13 @@ module.exports = async (req, res) => {
 
     if (!orderInfo.isPaid) return res.status(400).json({ success: false, error: 'Order not paid.' });
 
+    // Block old orders (> 7 days) — prevents stale/test orders from creating pending entries
+    const MAX_ORDER_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+    const orderDate = new Date(orderInfo.datePay).getTime();
+    if (!isNaN(orderDate) && Date.now() - orderDate > MAX_ORDER_AGE_MS) {
+      return res.status(400).json({ success: false, error: 'This order has expired. Delivery is only available within 7 days of purchase.' });
+    }
+
     const uniqueCode = ggselUUID || orderInfo.uniqueCode || '';
     const orderKey = uniqueCode || `ggsel-grok-${orderId}`;
 
