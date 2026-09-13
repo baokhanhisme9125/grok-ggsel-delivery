@@ -37,8 +37,19 @@ module.exports = async (req, res) => {
     if (!orderInfo.isPaid) return res.status(400).json({ success: false, error: 'Order not paid.' });
 
     // Block old orders (> 7 days) — prevents stale/test orders from creating pending entries
+    function parseDigiDate(str) {
+      if (!str) return NaN;
+      const d1 = new Date(str).getTime();
+      if (!isNaN(d1)) return d1;
+      const m = str.match(/^(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}):(\d{2}):(\d{2})$/);
+      if (m) return new Date(`${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:${m[6]}Z`).getTime();
+      const m2 = str.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+      if (m2) return new Date(`${m2[3]}-${m2[2]}-${m2[1]}T00:00:00Z`).getTime();
+      return NaN;
+    }
     const MAX_ORDER_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-    const orderDate = new Date(orderInfo.datePay).getTime();
+    const orderDate = parseDigiDate(orderInfo.datePay);
+    // Only block if date is confirmed too old — unknown dates are allowed through
     if (!isNaN(orderDate) && Date.now() - orderDate > MAX_ORDER_AGE_MS) {
       return res.status(400).json({ success: false, error: 'This order has expired. Delivery is only available within 7 days of purchase.' });
     }
