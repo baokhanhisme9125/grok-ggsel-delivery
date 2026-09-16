@@ -4,7 +4,7 @@
  */
 const { verifyOrder } = require('../lib/ggsel');
 const {
-  getNextAvailableAccount, deleteAccountRow, saveOrder, savePendingOrder,
+  getNextAvailableAccount, deleteAccountRow, revertClaimedRow, saveOrder, savePendingOrder,
   findOrderByCode, findAllOrdersByCode, deleteOrderRow,
   isAccountAlreadyDelivered, SHEET_NAME,
 } = require('../lib/sheets');
@@ -104,8 +104,8 @@ module.exports = async (req, res) => {
     /* ── 5. Double-check Orders (cross-instance race) ── */
     const raceCheck = await findOrderByCode(orderKey);
     if (raceCheck && !raceCheck.isPending) {
-      console.warn(`[grok-ggsel] Race detected for orderKey=${orderKey}`);
-      // Claimed row will auto-revert from Column B backup
+      console.warn(`[grok-ggsel] Race detected for orderKey=${orderKey} — reverting claim`);
+      try { await revertClaimedRow(SHEET_NAME, account.claimMark); } catch (e) { console.warn('[grok-ggsel] revert failed:', e.message); }
       return alreadyDeliveredResponse(res, raceCheck, uniqueCode);
     }
 
@@ -113,6 +113,7 @@ module.exports = async (req, res) => {
     const accountDup = await isAccountAlreadyDelivered(account.email, account.password);
     if (accountDup) {
       console.warn(`[grok-ggsel] DUPLICATE ACCOUNT BLOCKED: ${account.email} already delivered`);
+      try { await revertClaimedRow(SHEET_NAME, account.claimMark); } catch (e) { console.warn('[grok-ggsel] revert failed:', e.message); }
       return res.status(500).json({
         success: false,
         error: 'Account conflict detected. Please try again.',
