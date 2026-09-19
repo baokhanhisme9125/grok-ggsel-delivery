@@ -109,8 +109,9 @@ module.exports = async (req, res) => {
       return alreadyDeliveredResponse(res, raceCheck, uniqueCode);
     }
 
-    /* ── 5b. FRESH duplicate account check ── */
-    const accountDup = await isAccountAlreadyDelivered(account.email, account.password);
+    /* ── 5b. Duplicate account check — uses cached deliveredSet (no extra API call) ── */
+    const normalizedAccKey = `${account.email}:${account.password}`.toLowerCase().replace(/\s*:\s*/, ':');
+    const accountDup = account._deliveredSet ? account._deliveredSet.has(normalizedAccKey) : await isAccountAlreadyDelivered(account.email, account.password);
     if (accountDup) {
       console.warn(`[grok-ggsel] DUPLICATE ACCOUNT BLOCKED: ${account.email} already delivered`);
       try { await revertClaimedRow(SHEET_NAME, account.claimMark); } catch (e) { console.warn('[grok-ggsel] revert failed:', e.message); }
