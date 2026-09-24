@@ -58,19 +58,16 @@ module.exports = async (req, res) => {
     const orderKey = uniqueCode || `ggsel-grok-${orderId}`;
 
     /* ── 2. Idempotency check ── */
+    let hasPendingOrder = false;
     const existing = await findOrderByCode(orderKey);
     if (existing) {
       if (emailParam && emailParam !== (existing.buyerEmail || '').toLowerCase()) {
         return res.status(403).json({ success: false, error: 'Email does not match.' });
       }
-      if (existing.isPending) {
-        return res.status(503).json({
-          success: false, outOfStock: true, isPending: true,
-          productName: existing.productName, ggselUUID: uniqueCode,
-          error: 'Out of stock — your order is saved. Please refresh (F5) periodically to receive your account.',
-        });
-      }
-      return alreadyDeliveredResponse(res, existing, uniqueCode);
+      if (!existing.isPending) return alreadyDeliveredResponse(res, existing, uniqueCode);
+      // isPending: true — fall through and retry delivery from stock
+      hasPendingOrder = true;
+      console.log(`[grok-ggsel] Pending order found for key=${orderKey} — retrying delivery from stock`);
     }
 
     /* ── 3. Email match ── */
@@ -81,6 +78,15 @@ module.exports = async (req, res) => {
     /* ── 4. Claim account atomically ── */
     const account = await getNextAvailableAccount(SHEET_NAME, orderKey);
     if (!account) {
+      // Still OOS — if pending order already exists, don't save duplicate
+      if (hasPendingOrder) {
+        console.log(`[grok-ggsel] Still OOS for pending orderKey=${orderKey}`);
+        return res.status(503).json({
+          success: false, outOfStock: true, isPending: true,
+          productName: 'Grok Account', ggselUUID: uniqueCode,
+          error: 'Out of stock — your order is saved. Please refresh (F5) periodically to receive your account.',
+        });
+      }
       const pendingCheck = await findOrderByCode(orderKey);
       if (pendingCheck) {
         return res.status(503).json({
@@ -129,12 +135,12 @@ module.exports = async (req, res) => {
       orderId, productType: 'grok', productName: 'Grok Account (GGSEL)', ggselUUID: uniqueCode,
     });
 
-    /* ── 7. Post-save duplicate detection ── */
+    /* ── 7. Post-save: dedup + clean up pending rows ── */
     try {
       const allOrders = await findAllOrdersByCode(orderKey);
       if (allOrders.length > 1) {
-        console.warn(`[grok-ggsel] DUPLICATE: ${allOrders.length} orders for key=${orderKey}. Cleaning...`);
-        for (let i = 1; i < allOrders.length; i++) {
+        console.warn(`[grok-ggsel] ${allOrders.length} rows for key=${orderKey} — keeping last (completed), deleting earlier`);
+        for (let i = 0; i < allOrders.length - 1; i++) {
           await deleteOrderRow(allOrders[i].rowIndex);
         }
       }
