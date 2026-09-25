@@ -6,7 +6,7 @@ const { verifyOrder } = require('../lib/ggsel');
 const {
   getNextAvailableAccount, deleteAccountRow, revertClaimedRow, saveOrder, savePendingOrder,
   findOrderByCode, findAllOrdersByCode, deleteOrderRow,
-  isAccountAlreadyDelivered, SHEET_NAME,
+  isAccountAlreadyDelivered, findCompletedOrderByOrderId, SHEET_NAME,
 } = require('../lib/sheets');
 
 function alreadyDeliveredResponse(res, order, ggselUUID) {
@@ -73,6 +73,15 @@ module.exports = async (req, res) => {
     /* ── 3. Email match ── */
     if (emailParam && orderInfo.buyerEmail && orderInfo.buyerEmail !== emailParam) {
       return res.status(403).json({ success: false, error: 'Email does not match.' });
+    }
+
+    /* ── 3b. OrderId dedup — same order already delivered with different uniqueCode? ── */
+    if (orderId && !hasPendingOrder) {
+      const existingByOrderId = await findCompletedOrderByOrderId(orderId);
+      if (existingByOrderId && existingByOrderId.uniqueCode !== orderKey) {
+        console.warn(`[grok-ggsel] OrderId ${orderId} already delivered (code=${existingByOrderId.uniqueCode}), blocking duplicate`);
+        return alreadyDeliveredResponse(res, existingByOrderId, uniqueCode);
+      }
     }
 
     /* ── 4. Claim account atomically ── */
