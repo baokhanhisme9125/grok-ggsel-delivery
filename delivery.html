@@ -338,6 +338,26 @@ body::before{content:'';position:fixed;inset:0;background:
 </div>
 
 <script>
+/* fetchRetry: retries on network error / timeout / non-JSON (e.g. Vercel 504 page). APIs are idempotent. */
+async function fetchRetry(url){
+  let lastErr=null;
+  for(let attempt=1; attempt<=4; attempt++){
+    try{
+      const ctrl=new AbortController();
+      const to=setTimeout(()=>ctrl.abort(),65000);
+      const res=await fetch(url,{signal:ctrl.signal,cache:'no-store'});
+      clearTimeout(to);
+      const txt=await res.text();
+      let data; try{ data=JSON.parse(txt); }catch(pe){ throw new Error('Non-JSON response ('+res.status+')'); }
+      return { ok:res.ok, status:res.status, json: async()=>data };
+    }catch(fe){
+      lastErr=fe;
+      if(attempt<4) await new Promise(r=>setTimeout(r,1500*attempt));
+    }
+  }
+  throw lastErr||new Error('No response');
+}
+
 const S={
   en:{
     loading:'Verifying your order...',loadingDesc:'Checking GGSEL.net & allocating account',
@@ -507,24 +527,24 @@ async function load(){
 
     if(uniquecode && !orderid){
       // GGSEL "By link" sends UUID → resolve to numeric order ID first
-      const resolveRes=await fetch(`/api/resolve-uuid?uuid=${encodeURIComponent(uniquecode)}`);
+      const resolveRes=await fetchRetry(`/api/resolve-uuid?uuid=${encodeURIComponent(uniquecode)}`);
       const resolved=await resolveRes.json();
       if(resolved.success && resolved.orderId){
         // Got numeric ID, now verify normally — pass UUID for col H delivery link
-        const verifyRes=await fetch(`/api/verify?orderid=${encodeURIComponent(resolved.orderId)}${email?'&email='+encodeURIComponent(email):''}&ggsel_uuid=${encodeURIComponent(uniquecode)}`);
+        const verifyRes=await fetchRetry(`/api/verify?orderid=${encodeURIComponent(resolved.orderId)}${email?'&email='+encodeURIComponent(email):''}&ggsel_uuid=${encodeURIComponent(uniquecode)}`);
         data=await verifyRes.json();
         // Store UUID for tracking link
         if(data.success) data._ggselUUID = uniquecode;
       } else {
         // Fallback: try directly as orderid
-        const verifyRes=await fetch(`/api/verify?orderid=${encodeURIComponent(uniquecode)}${email?'&email='+encodeURIComponent(email):''}`);
+        const verifyRes=await fetchRetry(`/api/verify?orderid=${encodeURIComponent(uniquecode)}${email?'&email='+encodeURIComponent(email):''}`);
         data=await verifyRes.json();
       }
     } else {
       // Direct orderid flow (manual entry or orderid param)
       let url=`/api/verify?orderid=${encodeURIComponent(orderid)}`;
       if(email)url+=`&email=${encodeURIComponent(email)}`;
-      const res=await fetch(url);
+      const res=await fetchRetry(url);
       data=await res.json();
     }
 
